@@ -1,0 +1,209 @@
+stages:
+  - homol
+  - check_homol
+  - release
+  - prod
+  - check_prod
+
+deploy_homol:
+  stage: homol
+  image: node
+  before_script:
+    - apt update > /dev/null 2>&1 
+    - apt install dos2unix python3 python3-pip jq git unzip zip curl bash openssl wget rsync -y > /dev/null 2>&1
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata > /dev/null 2>&1
+    - rm -rf /etc/localtime
+    - ln -s /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
+    - curl -s https://releases.hashicorp.com/vault/1.5.3/vault_1.5.3_linux_amd64.zip -o "vault.zip"
+    - unzip -q vault.zip ; mv vault /usr/bin/ ; chmod +x /usr/bin/vault
+    - curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip -q awscliv2.zip
+    - ./aws/install
+    - aws --version
+    - vault -v
+    - echo $DATE
+    - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+    - eval $(ssh-agent -s)
+    # Setup SSH deploy keys
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - mkdir -p ~/.ssh
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - export TXT_RED="\e[31m" && export TXT_BLUE="\e[34m" && export TXT_GREEN="\e[32m" && export TXT_CYAN="\e[36m" && export TXT_YELLOW="\e[33m"
+    - export DATE=$(date +%d-%m-%YH%H:%M:%S)
+    - export VAULT_ADDR="${VAULT_ADDR}"
+    - export VAULT_TOKEN="${VAULT_TOKEN}"
+    - export ENV=homol
+    - export AWS_ACCESS_KEY_ID="${HOMOL_AWS_ACCESS_KEY_ID}"
+    - export AWS_SECRET_ACCESS_KEY="${HOMOL_AWS_SECRET_ACCESS_KEY}"
+  script:
+    - >
+      wget --header='PRIVATE-TOKEN: '${AUTOMACAO_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/deploy_ms_node.sh/raw?ref=master' -O deploy_ms_node.sh
+    - chmod +x deploy_ms_node.sh 
+    - ./deploy_ms_node.sh
+
+  only:
+    - master
+  allow_failure: false
+
+check_homol:
+  stage: check_homol
+  image: node
+  before_script:
+    - apt update > /dev/null 2>&1 
+    - apt install dos2unix python3 python3-pip jq git unzip zip curl bash openssl wget rsync -y > /dev/null 2>&1
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata > /dev/null 2>&1
+    - rm -rf /etc/localtime
+    - ln -s /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
+    - curl -s https://releases.hashicorp.com/vault/1.5.3/vault_1.5.3_linux_amd64.zip -o "vault.zip"
+    - unzip -q vault.zip ; mv vault /usr/bin/ ; chmod +x /usr/bin/vault
+    - curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip -q awscliv2.zip
+    - ./aws/install
+    - aws --version
+    - vault -v
+    - echo $DATE
+    - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+    - eval $(ssh-agent -s)
+    # Setup SSH deploy keys
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - mkdir -p ~/.ssh
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - export TXT_RED="\e[31m" && export TXT_BLUE="\e[34m" && export TXT_GREEN="\e[32m" && export TXT_CYAN="\e[36m" && export TXT_YELLOW="\e[33m"
+    - export DATE=$(date +%d-%m-%YH%H:%M:%S)
+    - export VAULT_ADDR="${VAULT_ADDR}"
+    - export VAULT_TOKEN="${VAULT_TOKEN}"
+    - export ENV=homol
+    - export AWS_ACCESS_KEY_ID="${HOMOL_AWS_ACCESS_KEY_ID}"
+    - export AWS_SECRET_ACCESS_KEY="${HOMOL_AWS_SECRET_ACCESS_KEY}"
+  script:
+    - >
+      wget --header='PRIVATE-TOKEN: '${AUTOMACAO_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/check_services.sh/raw?ref=master' -O check_services.sh
+    - chmod +x check_services.sh 
+    - ./check_services.sh
+
+  only:
+    - master
+  allow_failure: false
+  needs: ["deploy_homol"]
+
+create-release:
+  image: node
+  stage: release
+  before_script:
+    - DATE=$(date +%d-%m-%YH%H:%M:%S)
+    - cp $RELEASE_OPTIONS .releaserc.yml
+    - npm install -g semantic-release @semantic-release/gitlab @semantic-release/exec
+  script:
+    - >
+      echo -e "${TXT_BLUE}**************************************************************************************************************"
+
+      echo -e "${TXT_BLUE}******************************************| ${TXT_CYAN}STARTED AT":" $DATE"
+      
+      echo -e "${TXT_BLUE}******************************************| ${TXT_CYAN}USER":" $GITLAB_USER_LOGIN"
+      
+      echo -e "${TXT_BLUE}******************************************| ${TXT_CYAN}CRIANDO TAG RELEASE"
+      
+      echo -e "${TXT_BLUE}**************************************************************************************************************"
+      
+      echo " "
+      
+      semantic-release
+  only:
+    refs:
+      - master
+  when: manual
+  needs: ["check_homol"]
+  allow_failure: false
+
+deploy_prod:
+  stage: prod
+  image: node
+  before_script:
+    - apt update > /dev/null 2>&1 
+    - apt install dos2unix python3 python3-pip jq git unzip zip curl bash openssl wget rsync -y > /dev/null 2>&1
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata > /dev/null 2>&1
+    - rm -rf /etc/localtime
+    - ln -s /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
+    - curl -s https://releases.hashicorp.com/vault/1.5.3/vault_1.5.3_linux_amd64.zip -o "vault.zip"
+    - unzip -q vault.zip ; mv vault /usr/bin/ ; chmod +x /usr/bin/vault
+    - curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip -q awscliv2.zip
+    - ./aws/install
+    - aws --version
+    - vault -v
+    - echo $DATE
+    - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+    - eval $(ssh-agent -s)
+    # Setup SSH deploy keys
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - mkdir -p ~/.ssh
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - export TXT_RED="\e[31m" && export TXT_BLUE="\e[34m" && export TXT_GREEN="\e[32m" && export TXT_CYAN="\e[36m" && export TXT_YELLOW="\e[33m"
+    - export DATE=$(date +%d-%m-%YH%H:%M:%S)
+    - export VAULT_ADDR="${VAULT_ADDR}"
+    - export VAULT_TOKEN="${VAULT_TOKEN}"
+    - export ENV=prod
+    - export AWS_ACCESS_KEY_ID="${PROD_AWS_ACCESS_KEY_ID}"
+    - export AWS_SECRET_ACCESS_KEY="${PROD_AWS_SECRET_ACCESS_KEY}"
+    - export TAG_RELEASE=`git describe --abbrev=0 --tags`
+  script:
+    - >
+      wget --header='PRIVATE-TOKEN: '${AUTOMACAO_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/add_downtime_checkmk.sh/raw?ref=master' -O add_downtime_checkmk.sh
+    - chmod +x add_downtime_checkmk.sh 
+    - ./add_downtime_checkmk.sh
+
+    - >
+      wget --header='PRIVATE-TOKEN: '${AUTOMACAO_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/deploy_ms_node.sh/raw?ref=master' -O deploy_ms_node.sh
+    - chmod +x deploy_ms_node.sh 
+    - ./deploy_ms_node.sh
+
+    - >
+      wget --header='PRIVATE-TOKEN: '${AUTOMACAO_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/remove_downtime_checkmk.sh/raw?ref=master' -O remove_downtime_checkmk.sh
+    - chmod +x remove_downtime_checkmk.sh 
+    - ./remove_downtime_checkmk.sh
+  only:
+    - tags
+  when: manual
+  allow_failure: false
+
+check_prod:
+  stage: check_prod
+  image: node
+  before_script:
+    - apt update > /dev/null 2>&1 
+    - apt install dos2unix python3 python3-pip jq git unzip zip curl bash openssl wget rsync -y > /dev/null 2>&1
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata > /dev/null 2>&1
+    - rm -rf /etc/localtime
+    - ln -s /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
+    - curl -s https://releases.hashicorp.com/vault/1.5.3/vault_1.5.3_linux_amd64.zip -o "vault.zip"
+    - unzip -q vault.zip ; mv vault /usr/bin/ ; chmod +x /usr/bin/vault
+    - curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip -q awscliv2.zip
+    - ./aws/install
+    - aws --version
+    - vault -v
+    - echo $DATE
+    - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+    - eval $(ssh-agent -s)
+    # Setup SSH deploy keys
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - mkdir -p ~/.ssh
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - export TXT_RED="\e[31m" && export TXT_BLUE="\e[34m" && export TXT_GREEN="\e[32m" && export TXT_CYAN="\e[36m" && export TXT_YELLOW="\e[33m"
+    - export DATE=$(date +%d-%m-%YH%H:%M:%S)
+    - export VAULT_ADDR="${VAULT_ADDR}"
+    - export VAULT_TOKEN="${VAULT_TOKEN}"
+    - export ENV=prod
+    - export AWS_ACCESS_KEY_ID="${PROD_AWS_ACCESS_KEY_ID}"
+    - export AWS_SECRET_ACCESS_KEY="${PROD_AWS_SECRET_ACCESS_KEY}"
+    - export TAG_RELEASE=`git describe --abbrev=0 --tags`
+  script:
+    - >
+      wget --header='PRIVATE-TOKEN: '${AUTOMACAO_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/check_services.sh/raw?ref=master' -O check_services.sh
+    - chmod +x check_services.sh 
+    - ./check_services.sh
+  only:
+    - tags
+  allow_failure: false
+  needs: ["deploy_prod"]
+
