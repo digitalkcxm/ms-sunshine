@@ -45,8 +45,7 @@ export default class MessageController {
 
       if (message.type !== 'text') {
         global.amqpConn.sendToQueue(
-          // `mssunshine:${infos[0][0].ms_company_id}`,
-          `mssunshine:ef932f6710a681b3bea47dfab8789046`,
+          `mssunshine:${infos[0][0].ms_company_id}`,
           Buffer.from(
             JSON.stringify({
               id: saveMessage[0].protocol_id,
@@ -58,8 +57,7 @@ export default class MessageController {
         )
       } else {
         global.amqpConn.sendToQueue(
-          // `mssunshine:${infos[0].ms_company_id}`,
-          `mssunshine:ef932f6710a681b3bea47dfab8789046`,
+          `mssunshine:${infos[0].ms_company_id}`,
           Buffer.from(
             JSON.stringify({
               id: saveMessage[0].protocol_id,
