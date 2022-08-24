@@ -21,7 +21,6 @@ export default class ProtocolsController {
   }
 
   async create(settings, obj) {
-    console.log('🚀 ~ file: ProtocolsController.js ~ line 24 ~ ProtocolsController ~ create ~ obj', obj.events[0].payload)
     try {
       let protocol = await this.protocolsModel.getByConversationID(obj.events[0].payload.conversation.id)
 
@@ -78,7 +77,8 @@ export default class ProtocolsController {
         )
         return true
       } else {
-        await this.messagesController.incomingFromSunshine(settings, protocol, obj.events[0].payload.message)
+        if (obj.events[0].payload.message.author.type !== 'business')
+          await this.messagesController.incomingFromSunshine(settings, protocol, obj.events[0].payload.message)
       }
       return { message: 'Protocolo criado com sucesso!' }
     } catch (err) {
