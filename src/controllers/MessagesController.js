@@ -36,16 +36,20 @@ export default class MessageController {
       //     infos[0].ms_company_id
       //   )
 
-      if (message.content.type !== 'text')
+      if (message.content.type !== 'text' && message.content.type !== 'location')
         message.content.text = JSON.stringify([
           { url: message.content.mediaUrl, type: message.content.mediaType, name: message.content.altText }
         ])
 
-      let saveMessage = await this._saveMessage(protocol[0].id, message)
+        if (message.content.type === 'location'){
+          message.content.type = 'text'
+          console.log("🚀 ~ file: MessagesController.js ~ line 46 ~ MessageController ~ incomingFromSunshine ~  message.content",  message.content.coordinates)
+        }
 
-      if (message.type !== 'text') {
+      let saveMessage = await this._saveMessage(protocol[0].id, message)
+      if (message.content.type !== 'text') {
         global.amqpConn.sendToQueue(
-          `mssunshine:${infos[0][0].ms_company_id}`,
+          `mssunshine:${infos[0].ms_company_id}`,
           Buffer.from(
             JSON.stringify({
               id: saveMessage[0].protocol_id,
@@ -106,19 +110,26 @@ export default class MessageController {
         obj.content = msg.message.message
       } else {
         const bucket = msg.message.file[0].url.indexOf('prod') === -1 ? 'apis-storage-homol' : 'apis-storage-prod'
-        ;(obj.type = 'application/vnd.lime.media-link+json'),
-          (obj.content = {
-            title: msg.message.file[0].name,
-            type: await this._setContentType(msg.message.file[0].type),
-            uri: await this.storageService.getSignedUrl(
-              bucket,
-              msg.message.file[0].url.replace(`https://s3.sa-east-1.amazonaws.com/${bucket}/`, '')
-            )
-          })
+        console.log('🚀 ~ file: MessagesController.js ~ line 112 ~ MessageController ~ send ~ msg.message.file', msg.message)
+        console.log('🚀 ~ file: MessagesController.js ~ line 112 ~ MessageController ~ send ~ msg.message.file', msg.message.file)
+
+        obj.type = await this._setContentType(msg.message.file[0].type)
+        console.log("🚀 ~ file: MessagesController.js ~ line 112 ~ MessageController ~ send ~ obj.type", obj.type)
+        
+        obj.type = obj.type.substring(0, obj.type.indexOf('/'))
+        obj.content = {
+          altText: msg.message.file[0].name,
+          type: obj.type,
+          mediaUrl: await this.storageService.getSignedUrl(
+            bucket,
+            msg.message.file[0].url.replace(`https://s3.sa-east-1.amazonaws.com/${bucket}/`, '')
+          )
+        }
       }
 
+      console.log('🚀 ~ file: MessagesController.js ~ line 125 ~ MessageController ~ send ~ obj', obj)
       const result = await this.sunshineService.sendMessage(infos[0][0], infos[1][0].conversation_id, obj)
-      console.log('🚀 ~ file: MessagesController.js ~ line 121 ~ MessageController ~ send ~ result', result)
+      // console.log('🚀 ~ file: MessagesController.js ~ line 121 ~ MessageController ~ send ~ result', result.response.data)
       if (result.status !== 202 && result.status !== 200) return { error: 'Não foi possível enviar mensagem.' }
 
       let messageInfos = JSON.parse(result.config.data)
@@ -175,7 +186,7 @@ export default class MessageController {
       case 'html':
         return 'text/html'
       default:
-        return 'application/octet-stream'
+        return 'file/'
     }
   }
 }

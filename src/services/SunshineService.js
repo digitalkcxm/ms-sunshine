@@ -28,7 +28,21 @@ export default class SunshineService {
   }
 
   async sendMessage(settings, conversationID, message) {
+    console.log('🚀 ~ file: SunshineService.js ~ line 31 ~ SunshineService ~ sendMessage ~ message', message)
+
     try {
+      if (message.type !== 'text') {
+        return await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/messages`, {
+          author: {
+            type: 'business'
+          },
+          content: {
+            type: message.content.type,
+            mediaUrl: message.content.mediaUrl,
+            altText: message.content.altText
+          }
+        })
+      }
       return await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/messages`, {
         author: {
           type: 'business'
