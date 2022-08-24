@@ -28,7 +28,7 @@ integration:
     - ln -s /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
   script:
     - >
-      wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/integration_tests_exec.sh/raw?ref=feat_add_scripts_deploy_k8s' -O integration_tests_exec.sh
+      wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/integration_tests_exec.sh/raw?ref=master' -O integration_tests_exec.sh
     
     - chmod +x integration_tests_exec.sh 
     - ./integration_tests_exec.sh
@@ -75,7 +75,7 @@ build_homol:
     - export VERSION="${TAG_RELEASE}"
   script:
     - >
-      wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/build_img.sh/raw?ref=feat_add_scripts_deploy_k8s' -O build_img.sh
+      wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/build_img.sh/raw?ref=master' -O build_img.sh
     - chmod +x build_img.sh 
     - ./build_img.sh
   only:
@@ -130,7 +130,7 @@ deploy_homol:
     - export VERSION="${TAG_RELEASE}"
   script:
     - >
-      wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/deploy_ms_k8s.sh/raw?ref=feat_add_scripts_deploy_k8s' -O deploy_ms_k8s.sh
+      wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/deploy_ms_k8s.sh/raw?ref=master' -O deploy_ms_k8s.sh
     - chmod +x deploy_ms_k8s.sh 
     - ./deploy_ms_k8s.sh
 
