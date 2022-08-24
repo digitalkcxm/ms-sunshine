@@ -27,11 +27,12 @@ integration:
     - rm -rf /etc/localtime
     - ln -s /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
   script:
-    - >
-      wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/integration_tests_exec.sh/raw?ref=feat_add_scripts_deploy_k8s' -O integration_tests_exec.sh
-    
-    - chmod +x integration_tests_exec.sh 
-    - ./integration_tests_exec.sh
+    - echo "test"
+    #- >
+    #  wget --header='PRIVATE-TOKEN: '${GITLAB_TOKEN}'' 'https://gitlab.com/api/v4/projects/24070595/repository/files/integration_tests_exec.sh/raw?ref=feat_add_scripts_deploy_k8s' -O integration_tests_exec.sh
+    #
+    #- chmod +x integration_tests_exec.sh 
+    #- ./integration_tests_exec.sh
   only:
     - master
   tags:
