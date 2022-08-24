@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "test": "cross-env NODE_ENV=test NODE_OPTIONS='--experimental-vm-modules' ./node_modules/.bin/run.env jest --detectOpenHandles --forceExit",
     "migrate:latest": "./node_modules/.bin/run.env ./node_modules/.bin/knex migrate:latest",
     "seed:run": "./node_modules/.bin/run.env ./node_modules/.bin/knex seed:run",
     "migrate:rollback": "./node_modules/.bin/run.env ./node_modules/.bin/knex migrate:rollback",
