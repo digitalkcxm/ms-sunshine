@@ -35,7 +35,7 @@ export default class ProtocolsModel {
       return await this.database(table)
         .update(obj)
         .where('id', id)
-        .returning(['id', 'setting_id', 'ticket_id', 'contact_id', 'closed', 'created_at'])
+        .returning(['id', 'settings_id', 'conversation_id', 'closed', 'created_at'])
     } catch (err) {
       return err
     }
