@@ -81,8 +81,12 @@ export default class ProtocolsController {
         )
         return true
       } else {
-        if (obj.events[0].payload.message.author.type !== 'business')
-          await this.messagesController.incomingFromSunshine(settings, protocol, obj.events[0].payload.message)
+        if (
+          obj.events[0].payload.message &&
+          obj.events[0].payload.message.author &&
+          obj.events[0].payload.message.author.type !== 'business'
+        )
+          this.messagesController.incomingFromSunshine(settings, protocol, obj.events[0].payload.message)
       }
       return { message: 'Protocolo criado com sucesso!' }
     } catch (err) {
@@ -102,9 +106,15 @@ export default class ProtocolsController {
 
       if (infos[0].length < 1 || infos[0].code === '22P02') return res.status(400).send({ error: 'Company inválida.' })
 
-      const settings = await this.settingsModel.getByID(infos[0][0].id, infos[1][0].setting_id)
-
-      this.blipService.closedTicket(settings[0], infos[1][0].ticket_id)
+      console.log(
+        '🚀 ~ file: ProtocolsController.js ~ line 106 ~ ProtocolsController ~ closedProtocol ~ infos[0][0].id, infos[1][0].setting_id',
+        infos[0][0].id,
+        infos[1][0].settings_id
+      )
+      const settings = await this.settingsModel.getByID(infos[0][0].id, infos[1][0].settings_id)
+      if (settings) {
+        this.sunshineService.closedConversation(settings[0], infos[1][0].conversation_id)
+      }
       return res.status(200).send({ message: 'Protocolo finalizado.' })
     } catch (err) {
       return res.status(500).send(err)

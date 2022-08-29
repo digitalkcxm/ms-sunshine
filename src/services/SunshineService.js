@@ -57,4 +57,15 @@ export default class SunshineService {
       return err
     }
   }
+
+  async closedConversation(settings, conversationID) {
+    console.log("🚀 ~ file: SunshineService.js ~ line 62 ~ SunshineService ~ closedConversation ~ settings, conversationID", settings, conversationID)
+    try {
+      return await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/passControl`, {
+        switchboardIntegration: '6012f685b35e43000c97ba1f'
+      })
+    } catch (err) {
+      return err
+    }
+  }
 }
