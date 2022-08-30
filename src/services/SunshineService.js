@@ -10,6 +10,14 @@ export default class SunshineService {
       }
     })
   }
+  
+  async listSwitchboardIntegrations(settings, switchboardID) {
+    try {
+      return await this._instance(settings).get(`/v2/apps/${settings.appID}/switchboards/${switchboardID}/switchboardIntegrations`)
+    } catch (err) {
+      return err
+    }
+  }
 
   async listConversations(settings, conversationID) {
     try {
