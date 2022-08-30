@@ -41,10 +41,7 @@ export default class MessageController {
           { url: message.content.mediaUrl, type: message.content.mediaType, name: message.content.altText }
         ])
 
-        if (message.content.type === 'location'){
-          message.content.type = 'text'
-          console.log("🚀 ~ file: MessagesController.js ~ line 46 ~ MessageController ~ incomingFromSunshine ~  message.content",  message.content.coordinates)
-        }
+      if (message.content.type === 'location') message.content.type = 'text'
 
       let saveMessage = await this._saveMessage(protocol[0].id, message)
       if (message.content.type !== 'text') {
@@ -110,12 +107,9 @@ export default class MessageController {
         obj.content = msg.message.message
       } else {
         const bucket = msg.message.file[0].url.indexOf('prod') === -1 ? 'apis-storage-homol' : 'apis-storage-prod'
-        console.log('🚀 ~ file: MessagesController.js ~ line 112 ~ MessageController ~ send ~ msg.message.file', msg.message)
-        console.log('🚀 ~ file: MessagesController.js ~ line 112 ~ MessageController ~ send ~ msg.message.file', msg.message.file)
 
         obj.type = await this._setContentType(msg.message.file[0].type)
-        console.log("🚀 ~ file: MessagesController.js ~ line 112 ~ MessageController ~ send ~ obj.type", obj.type)
-        
+
         obj.type = obj.type.substring(0, obj.type.indexOf('/'))
         obj.content = {
           altText: msg.message.file[0].name,
@@ -127,9 +121,7 @@ export default class MessageController {
         }
       }
 
-      console.log('🚀 ~ file: MessagesController.js ~ line 125 ~ MessageController ~ send ~ obj', obj)
       const result = await this.sunshineService.sendMessage(infos[0][0], infos[1][0].conversation_id, obj)
-      // console.log('🚀 ~ file: MessagesController.js ~ line 121 ~ MessageController ~ send ~ result', result.response.data)
       if (result.status !== 202 && result.status !== 200) return { error: 'Não foi possível enviar mensagem.' }
 
       let messageInfos = JSON.parse(result.config.data)

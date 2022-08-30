@@ -61,19 +61,18 @@ export default class ProtocolsController {
             message.content.text = JSON.stringify([
               { url: message.content.mediaUrl, type: message.content.mediaType, name: message.content.altText }
             ])
-          let teste1 = (await this.messagesController._saveMessage(protocol[0].id, message))[0]
-          teste1.type !== 'text' ? (teste1.content = JSON.parse(teste1.content)) : ''
-          saveMessages.push(teste1)
+          let msg = (await this.messagesController._saveMessage(protocol[0].id, message))[0]
+          msg.type !== 'text' ? (msg.content = JSON.parse(msg.content)) : ''
+          saveMessages.push(msg)
         }
 
         const company = await this.msCompanyService.getByID((await this.companiesModel.getByID(settings.company_id))[0].ms_company_id)
 
-        if (obj.events[0].payload.conversation.metadata && obj.events[0].payload.conversation.metadata.status) {
+        if (obj.events[0].payload.conversation.metadata && obj.events[0].payload.conversation.metadata.status)
           obj.events[0].payload.conversation.metadata.mensagemErro = obj.events[0].payload.metadata.mensagemErro
-        }
 
-        let teste = this.coreService.createProtocol(
-          'https://api-agf-homol.digitalk.com.br',
+        this.coreService.createProtocol(
+          company.data.url_api,
           protocol,
           saveMessages,
           user,
@@ -106,15 +105,8 @@ export default class ProtocolsController {
 
       if (infos[0].length < 1 || infos[0].code === '22P02') return res.status(400).send({ error: 'Company inválida.' })
 
-      console.log(
-        '🚀 ~ file: ProtocolsController.js ~ line 106 ~ ProtocolsController ~ closedProtocol ~ infos[0][0].id, infos[1][0].setting_id',
-        infos[0][0].id,
-        infos[1][0].settings_id
-      )
       const settings = await this.settingsModel.getByID(infos[0][0].id, infos[1][0].settings_id)
-      if (settings) {
-        this.sunshineService.closedConversation(settings[0], infos[1][0].conversation_id)
-      }
+      if (settings) this.sunshineService.closedConversation(settings[0], infos[1][0].conversation_id)
       return res.status(200).send({ message: 'Protocolo finalizado.' })
     } catch (err) {
       return res.status(500).send(err)

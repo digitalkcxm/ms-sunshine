@@ -1,35 +1,56 @@
 import moment from 'moment'
-import SettingsModel from '../models/SettingsModel.js'
 import CompaniesModel from '../models/CompaniesModel.js'
 import MSCompanyService from '../services/MSCompanyService.js'
+import SettingsModel from '../models/SettingsModel.js'
+import SunshineService from '../services/SunshineService.js'
+import SwitchboardsModel from '../models/SwitchboardsModel.js'
 
 export default class SettingsController {
   constructor(database) {
+    this.companiesModel = new CompaniesModel(database)
     this.msCompanyService = new MSCompanyService()
     this.settingsModel = new SettingsModel(database)
-    this.companiesModel = new CompaniesModel(database)
+    this.sunshineService = new SunshineService()
+    this.switchboardsModel = new SwitchboardsModel(database)
   }
+
   async create(req, res) {
     try {
       let company = await this.companiesModel.getByCompanyID(req.headers.authorization)
 
-      if (company.length === 0) {
+      if (company.length === 0)
         if ((await this.msCompanyService.getByID(req.headers.authorization)).data !== undefined)
           company = await this.companiesModel.create({ ms_company_id: req.headers.authorization })
+
+      const infos = await Promise.all([
+        this.sunshineService.listSwitchboardIntegrations(req.body, req.body.switchboard),
+        this.settingsModel.create({
+          company_id: company[0].id,
+          name: req.body.name,
+          appID: req.body.appID,
+          username: req.body.username,
+          password: req.body.password
+        })
+      ])
+
+      for (const obj of infos[0].data.switchboardIntegrations) {
+        this.switchboardsModel.create({
+          settings_id: infos[1][0].id,
+          name: obj.name,
+          switchboardID: req.body.switchboard,
+          integrationID: obj.integrationId,
+          integrationType: obj.integrationType,
+          deliverStandbyEvents: obj.deliverStandbyEvents,
+          nextSwitchboardIntegrationID: obj.nextSwitchboardIntegrationId,
+          switchboardIntegrationsID: obj.id,
+          messageHistoryCount: obj.messageHistoryCount
+        })
       }
 
-      const result = await this.settingsModel.create({
-        company_id: company[0].id,
-        name: req.body.name,
-        appID: req.body.appID,
-        username: req.body.username,
-        password: req.body.password
-      })
-
-      if (result && result.code && result.code === '23505')
+      if (infos[1] && infos[1][0].code && infos[1][0].code === '23505')
         return res.status(400).send({ Error: `O nome '${req.body.name}' já existe na base.` })
 
-      return res.status(200).send(result[0])
+      return res.status(200).send(infos[1])
     } catch (err) {
       console.log('🚀 ~ file: SettingsController.js ~ line 34 ~ SettingsController ~ create ~ err', err)
       return res.status(500).send(err)
