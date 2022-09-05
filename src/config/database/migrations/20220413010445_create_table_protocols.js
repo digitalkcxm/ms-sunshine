@@ -4,7 +4,7 @@ export async function up(knex) {
   await knex.schema.createTable('protocols', (table) => {
     table.increments('id')
     table.uuid('settings_id').notNullable()
-    table.string('conversation_id').unique('conversation_id').notNullable()
+    table.string('conversation_id').notNullable()
     table.integer('contact_id').notNullable()
     table.boolean('closed').defaultTo(false)
     table.timestamps(true, true)

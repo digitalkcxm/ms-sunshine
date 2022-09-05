@@ -9,50 +9,30 @@ export default class SettingsModel {
     try {
       return await this.database(table).insert(obj).returning(['*'])
     } catch (err) {
-      console.log("🚀 ~ file: SwitchboardsModel.js ~ line 12 ~ SettingsModel ~ create ~ err", err)
+      console.log('🚀 ~ file: SwitchboardsModel.js ~ line 12 ~ SettingsModel ~ create ~ err', err)
       return err
     }
   }
 
-  async getAll(company_id) {
+  async getAll(settingsID) {
     try {
-      return await this.database(table).select('*').where('company_id', company_id)
+      return await this.database(table).select('*').where('settings_id', settingsID)
     } catch (err) {
       return err
     }
   }
 
-  async getByID(company_id, id) {
+  async getBySwitchboardID(settingsID, id) {
     try {
-      return await this.database(table).select('*').where('company_id', company_id).where('id', id)
+      return await this.database(table).select('*').where('settings_id', settingsID).where('switchboardIntegrationsID', id)
     } catch (err) {
       return err
     }
   }
 
-  async update(id, obj) {
+  async getBySwitchboardBySource(settingsID, source) {
     try {
-      return await this.database(table)
-        .update(obj)
-        .returning(['id', 'company_id', 'name', 'appID', 'username', 'password', 'activated', 'created_at'])
-        .where('id', id)
-    } catch (err) {
-      console.log(err)
-      return err
-    }
-  }
-
-  async getByAppID(appID) {
-    try {
-      return await this.database(table).select('*').where({ appID })
-    } catch (err) {
-      return err
-    }
-  }
-
-  async getByCompanyID(company_id) {
-    try {
-      return await this.database(table).select('*').where('company_id', company_id)
+      return await this.database(table).select('*').where('settings_id', settingsID).where('source', source)
     } catch (err) {
       return err
     }

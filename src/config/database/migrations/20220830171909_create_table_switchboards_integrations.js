@@ -1,7 +1,7 @@
 import moment from 'moment'
 
 export async function up(knex) {
-    await knex.schema.createTable('switchboards_integrations', (table) => {
+  await knex.schema.createTable('switchboards_integrations', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'))
     table.uuid('settings_id').notNullable()
     table.string('name').notNullable()
@@ -12,6 +12,7 @@ export async function up(knex) {
     table.string('nextSwitchboardIntegrationID').notNullable()
     table.string('switchboardIntegrationsID').notNullable()
     table.string('messageHistoryCount').notNullable()
+    table.string('source')
     table.boolean('activated').defaultTo(true).notNullable()
     table.timestamps(true, true)
     table.foreign('settings_id').references('settings.id')

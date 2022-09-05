@@ -24,7 +24,7 @@ export default class ProtocolsModel {
 
   async getByConversationID(conversationID) {
     try {
-      return await this.database(table).select('*').where('conversation_id', conversationID)
+      return await this.database(table).select('*').where('conversation_id', conversationID).orderBy('id', 'desc').limit(1)
     } catch (err) {
       return err
     }
