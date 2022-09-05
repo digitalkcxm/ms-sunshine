@@ -1,4 +1,3 @@
-import moment from 'moment'
 import File from '../helpers/File.js'
 import CoreService from '../services/CoreService.js'
 import SunshineService from '../services/SunshineService.js'
@@ -27,14 +26,6 @@ export default class MessageController {
   async incomingFromSunshine(settings, protocol, message) {
     try {
       const infos = await this.companiesModel.getByID(settings.company_id)
-
-      // if (message.content.type === 'image')
-      //   message.content.mediaUrl = await this.file._downloadMedia(
-      //     message.content.mediaUrl,
-      //     message.content.mediaType,
-      //     message.id,
-      //     infos[0].ms_company_id
-      //   )
 
       if (message.content.type !== 'text' && message.content.type !== 'location')
         message.content.text = JSON.stringify([
@@ -122,12 +113,9 @@ export default class MessageController {
       }
 
       const result = await this.sunshineService.sendMessage(infos[0][0], infos[1][0].conversation_id, obj)
-      if (result.status !== 202 && result.status !== 200) return { error: 'Não foi possível enviar mensagem.' }
+      if (result.status !== 201) return { error: 'Não foi possível enviar mensagem.' }
 
-      let messageInfos = JSON.parse(result.config.data)
-      messageInfos.uri = msg.message.file !== null ? msg.message.file[0].url : msg.message.file
-
-      this._saveMessage(infos[1], messageInfos, 'operator')
+      this._saveMessage(infos[1][0].id, result.data.messages[0], 'operator')
 
       return { message: 'Mensagem enviada com sucesso!' }
     } catch (err) {
@@ -136,14 +124,17 @@ export default class MessageController {
     }
   }
 
-  async _saveMessage(protocol, message) {
+  async _saveMessage(protocol, message, source = false) {
     try {
       return await this.messageModel.create({
         protocol_id: protocol,
         message_id: message.id,
-        content: message.content.text,
+        content:
+          message.content.type === 'text'
+            ? message.content.text
+            : JSON.stringify([{ url: message.content.mediaUrl, type: message.content.mediaType, name: message.content.altText }]),
         type: message.content.type,
-        source: message.source.type
+        source: !source ? message.source.type : source
         // received: moment(message.received).format()
       })
     } catch (err) {

@@ -6,7 +6,8 @@ export default (database) => {
 
   const protocolsController = new ProtocolsController(database)
 
-  router.put('/', (req, res) => protocolsController.closedProtocol(req, res))
+  router.put('/closed', (req, res) => protocolsController.closedProtocol(req, res))
+  router.get('/nps/:id', (req, res) => protocolsController.getNPS(req, res))
 
   return router
 }

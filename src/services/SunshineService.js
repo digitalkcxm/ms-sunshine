@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { v4 } from 'uuid'
 
 export default class SunshineService {
   _instance(settings) {
@@ -10,7 +9,7 @@ export default class SunshineService {
       }
     })
   }
-  
+
   async listSwitchboardIntegrations(settings, switchboardID) {
     try {
       return await this._instance(settings).get(`/v2/apps/${settings.appID}/switchboards/${switchboardID}/switchboardIntegrations`)
@@ -36,8 +35,6 @@ export default class SunshineService {
   }
 
   async sendMessage(settings, conversationID, message) {
-    console.log('🚀 ~ file: SunshineService.js ~ line 31 ~ SunshineService ~ sendMessage ~ message', message)
-
     try {
       if (message.type !== 'text') {
         return await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/messages`, {
@@ -66,11 +63,10 @@ export default class SunshineService {
     }
   }
 
-  async closedConversation(settings, conversationID) {
-    console.log("🚀 ~ file: SunshineService.js ~ line 62 ~ SunshineService ~ closedConversation ~ settings, conversationID", settings, conversationID)
+  async closedConversation(settings, conversationID, switchboardIntegrationsID) {
     try {
       return await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/passControl`, {
-        switchboardIntegration: '6012f685b35e43000c97ba1f'
+        switchboardIntegration: switchboardIntegrationsID
       })
     } catch (err) {
       return err
