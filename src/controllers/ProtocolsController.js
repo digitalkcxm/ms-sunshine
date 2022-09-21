@@ -23,6 +23,7 @@ export default class ProtocolsController {
   }
 
   async create(settings, obj) {
+    console.log('🚀 ~ file: ProtocolsController.js ~ line 26 ~ ProtocolsController ~ create ~ obj', obj.events[0].payload)
     try {
       if (obj.events[0].type === 'switchboard:passControl') {
         if (
@@ -70,7 +71,9 @@ export default class ProtocolsController {
         protocol = await this.protocolsModel.create({
           settings_id: settings.id,
           conversation_id: obj.events[0].payload.conversation.id,
-          contact_id: user[0].id
+          contact_id: user[0].id,
+          priority: obj.events[0].payload.metadata['dataCapture.ticketField.department'],
+          session_id: obj.events[0].payload.metadata.sessionId
         })
 
         let saveMessages = []
@@ -96,7 +99,9 @@ export default class ProtocolsController {
           protocol,
           saveMessages,
           user,
-          obj.events[0].payload.conversation.metadata ? obj.events[0].payload.conversation.metadata : ''
+          obj.events[0].payload.conversation.metadata ? obj.events[0].payload.conversation.metadata : '',
+          obj.events[0].payload.metadata['dataCapture.ticketField.department'] == '230147' ? true : false,
+          obj.events[0].payload.metadata.sessionId
         )
         console.log('====================CRIOU UM NOVO PROTOCOLO====================')
         return true
