@@ -7,9 +7,9 @@ export default class CoreService {
     })
   }
 
-  async createProtocol(url, protocol, messages, user, notify = '') {
+  async createProtocol(url, protocol, messages, user, notify = '', priority = false, sessionID) {
     try {
-      return await this._instance(url).post('/api/v2/incoming/sunshine/protocol', { protocol, messages, user, notify })
+      return await this._instance(url).post('/api/v2/incoming/sunshine/protocol', { protocol, messages, user, notify, priority, sessionID})
     } catch (err) {
       console.log('🚀 ~ file: CoreService.js ~ line 14 ~ CoreService ~ createProtocol ~ err', err)
       return err
