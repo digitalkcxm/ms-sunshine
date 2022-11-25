@@ -42,7 +42,10 @@ export default class ProtocolsController {
       if (protocol.length <= 0 || (protocol.length > 0 && protocol[0].closed === true)) {
         let messages = await this.sunshineService.listConversations(settings, obj.events[0].payload.conversation.id)
 
-        let user = await this.contactsModel.getByUserID(settings, messages.data.messages[0].author.userId)
+        let user = await this.contactsModel.getByUserID(
+          settings,
+          messages.data.messages.filter((obj) => obj.author.userId)[0].author.userId
+        )
         console.log('🚀 ~ file: ProtocolsController.js ~ line 46 ~ ProtocolsController ~ create ~ user', user)
 
         if (user.length <= 0) {
@@ -67,12 +70,15 @@ export default class ProtocolsController {
           console.log('🚀 ~ file: ProtocolsController.js ~ line 67 ~ ProtocolsController ~ create ~ user', user)
         }
         console.log('🚀 ~ file: ProtocolsController.js ~ line 75 ~ ProtocolsController ~ create ~ user', user)
-
+        obj.events[0].payload.metadata['dataCapture.ticketField.department'] = ''
         protocol = await this.protocolsModel.create({
           settings_id: settings.id,
           conversation_id: obj.events[0].payload.conversation.id,
           contact_id: user[0].id,
-          priority: obj.events[0].payload.metadata['dataCapture.ticketField.department'],
+          priority:
+            obj.events[0].payload.metadata['dataCapture.ticketField.department'] != ''
+              ? obj.events[0].payload.metadata['dataCapture.ticketField.department']
+              : null,
           session_id: obj.events[0].payload.metadata.sessionId
         })
 
