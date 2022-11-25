@@ -70,7 +70,6 @@ export default class ProtocolsController {
           console.log('🚀 ~ file: ProtocolsController.js ~ line 67 ~ ProtocolsController ~ create ~ user', user)
         }
         console.log('🚀 ~ file: ProtocolsController.js ~ line 75 ~ ProtocolsController ~ create ~ user', user)
-        obj.events[0].payload.metadata['dataCapture.ticketField.department'] = ''
         protocol = await this.protocolsModel.create({
           settings_id: settings.id,
           conversation_id: obj.events[0].payload.conversation.id,
