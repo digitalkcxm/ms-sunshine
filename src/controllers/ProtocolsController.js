@@ -104,8 +104,12 @@ export default class ProtocolsController {
           protocol,
           saveMessages,
           user,
-          obj.events[0].payload.conversation.metadata ? obj.events[0].payload.conversation.metadata : '',
-          obj.events[0].payload.metadata['dataCapture.ticketField.department'] == '230147' ? true : false,
+          obj.events[0].payload.conversation.metadata ? obj.events[0].payload.conversation.metadata : obj.events[0].payload.metadata,
+          obj.events[0].payload.metadata &&
+            obj.events[0].payload.metadata['dataCapture.ticketField.department'] &&
+            obj.events[0].payload.metadata['dataCapture.ticketField.department'] == '230147'
+            ? true
+            : false,
           obj.events[0].payload.metadata.sessionId
         )
         console.log('====================CRIOU UM NOVO PROTOCOLO====================')
