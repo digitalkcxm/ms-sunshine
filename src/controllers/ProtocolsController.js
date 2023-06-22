@@ -96,8 +96,12 @@ export default class ProtocolsController {
 
         const company = await this.msCompanyService.getByID((await this.companiesModel.getByID(settings.company_id))[0].ms_company_id)
 
-        if (obj.events[0].payload.conversation.metadata && obj.events[0].payload.conversation.metadata.status)
+        if (
+          (obj.events[0].payload.conversation.metadata && obj.events[0].payload.conversation.metadata.status) ||
+          (obj.events[0].payload.metadata && obj.events[0].payload.metadata.mensagemErro)
+        ) {
           obj.events[0].payload.conversation.metadata.mensagemErro = obj.events[0].payload.metadata.mensagemErro
+        }
 
         this.coreService.createProtocol(
           company.data.url_api,
