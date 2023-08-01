@@ -7,7 +7,7 @@ const storageService = new StorageService()
 
 export default class File {
   async _uploadDigitalk(buff, name, tokenCompany, contentType) {
-    const bucketDir = process.env.APP_NAME || 'mssunshine'
+    const bucketDir = process.env.PROJECT_NAME || 'mssunshine'
     const resultLinkFile = await storageService.upload(bucketDir, buff, name, contentType, process.env.BUCKET, true, tokenCompany)
     return resultLinkFile
   }
