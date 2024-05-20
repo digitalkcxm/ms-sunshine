@@ -11,6 +11,8 @@ export default class WebhookController {
 
   async webhook(req, res) {
     try {
+      if (req.body.events[0].payload.message?.source?.type === 'api:conversations') return res.status(200).send('ok') // Retorno da mensagem do operador
+
       const settings = await this.settingsModel.getByAppID(req.body.app.id)
       if (settings.length <= 0) return res.status(400).send({ error: 'Token de Autenticação inválido' })
 
