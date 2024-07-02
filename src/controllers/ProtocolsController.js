@@ -150,7 +150,7 @@ export default class ProtocolsController {
         const switchboard = await this.switchboardsModel.getBySwitchboardBySource(settings[0].id, 'bot')
         const avoidPSATBot = req.body?.avoidPSATBot !== undefined && req.body.avoidPSATBot ? true : false
         
-        this.sunshineService.closedConversation(settings[0], infos[1][0].conversation_id, switchboard[0].switchboardIntegrationsID, avoidPSATBot, infos[1][0].session_id, tab_details)
+        this.sunshineService.closedConversation(settings[0], infos[1][0].conversation_id, switchboard[0].switchboardIntegrationsID, avoidPSATBot, infos[1][0].session_id, tab_details, req.body?.protocol_id)
       }
       return res.status(200).send({ message: 'Protocolo finalizado.' })
     } catch (err) {
