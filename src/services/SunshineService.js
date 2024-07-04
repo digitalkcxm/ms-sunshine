@@ -67,10 +67,12 @@ export default class SunshineService {
     try {      
       const result = await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/passControl`, {
         switchboardIntegration: switchboardIntegrationsID,
-        protocol: protocol,
-        avoidPSATBot: avoidPSATBot,
-        session_id: session_id,
-        details_tab: details_tab
+        metadata: {
+          protocol: protocol,
+          avoidPSATBot: avoidPSATBot,
+          session_id: session_id,
+          details_tab: details_tab,
+        }
       })
 
       console.log('RETORNO DO FINALIZAR O CHAT E ENVIAR AS INFOMAÇÕES DO BYPASS', result)
