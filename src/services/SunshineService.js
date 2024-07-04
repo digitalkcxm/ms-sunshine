@@ -63,11 +63,21 @@ export default class SunshineService {
     }
   }
 
-  async closedConversation(settings, conversationID, switchboardIntegrationsID) {
-    try {
-      return await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/passControl`, {
-        switchboardIntegration: switchboardIntegrationsID
+  async closedConversation(settings, conversationID, switchboardIntegrationsID, avoidPSATBot = true, session_id, details_tab, protocol) {
+    try {      
+      const result = await this._instance(settings).post(`/v2/apps/${settings.appID}/conversations/${conversationID}/passControl`, {
+        switchboardIntegration: switchboardIntegrationsID,
+        metadata: {
+          protocol: protocol,
+          avoidPSATBot: avoidPSATBot,
+          session_id: session_id,
+          details_tab: details_tab,
+        }
       })
+
+      console.log('RETORNO DO FINALIZAR O CHAT E ENVIAR AS INFOMAÇÕES DO BYPASS', result)
+      
+      return result
     } catch (err) {
       return err
     }
