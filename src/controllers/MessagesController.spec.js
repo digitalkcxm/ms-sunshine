@@ -32,6 +32,13 @@ jest.mock('file-type', () => {
   };
 });
 
+// Mock rabbitMQ
+jest.mock('../config/rabbitMQ.js', () => ({
+  __esModule: true,
+  default: jest.fn().mockResolvedValue(),
+  closeConnection: jest.fn().mockResolvedValue(),
+}));
+
 describe('MessageController', () => {
   let messageController;
   let mockDatabase;
@@ -42,10 +49,16 @@ describe('MessageController', () => {
     
     global.amqpConn = {
       sendToQueue: jest.fn(),
-      assertQueue: jest.fn(),
+      assertQueue: jest.fn().mockImplementation((queueName, options, callback) => {
+        callback(null, {});
+      }),
       prefetch: jest.fn(),
-      consume: jest.fn(),
-      checkQueue: jest.fn()
+      consume: jest.fn().mockImplementation((queueName, callback, options, consumeCallback) => {
+        consumeCallback(null, { consumerTag: 'mockTag' });
+      }),
+      checkQueue: jest.fn().mockImplementation((queueName, callback) => {
+        callback(null, { consumerCount: 1 });
+      })
     };
 
     if (messageController.msCompanyService && messageController.msCompanyService.getByID) {
@@ -114,6 +127,8 @@ describe('MessageController', () => {
       expect(global.amqpConn.assertQueue).toHaveBeenCalled();
       expect(global.amqpConn.prefetch).toHaveBeenCalled();
       expect(global.amqpConn.consume).toHaveBeenCalled();
+      expect(messageController.consumerConfigured).toBe(true);
+      expect(messageController.consumerTag).toBe('mockTag');
     });
   });
 
