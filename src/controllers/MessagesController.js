@@ -8,8 +8,9 @@ import ProtocolModel from '../models/ProtocolsModel.js'
 import CompaniesModel from '../models/CompaniesModel.js'
 import StorageService from '../services/StorageService.js'
 import MSCompanyService from '../services/MSCompanyService.js'
-
+import queue, { closeConnection } from '../config/rabbitMQ.js';
 export default class MessageController {
+  static instance = null;
   constructor(database) {
     this.file = new File()
     this.coreService = new CoreService()
@@ -21,12 +22,36 @@ export default class MessageController {
     this.protocolModel = new ProtocolModel(database)
     this.settingsModel = new SettingsModel(database)
     this.companiesModel = new CompaniesModel(database)
+    this.monitorInterval = null
+    this.connectionCheckInterval = null
+    this.consumerConfigured = false
+    this.consumerTag = null
   }
+  async initialize() {
+    console.log('Iniciando inicialização do MessageController...')
+    try {
+      console.log('Aguardando conexão com RabbitMQ...')
+      await queue() // Espera a conexão com o RabbitMQ ser estabelecida
+      if (!global.amqpConn) {
+        throw new Error('global.amqpConn não foi definido após a conexão')
+      }
 
+      console.log('Conexão com RabbitMQ estabelecida com sucesso')
+
+      this.connectionCheckInterval = setInterval(() => this.checkRabbitMQConnection(), 600)
+      console.log('Intervalo de verificação de conexão configurado')
+
+      console.log('Chamando incomingFromCore...')
+      await this.incomingFromCore()
+      console.log('Inicialização do MessageController concluída com sucesso')
+    } catch (error) {
+      console.error('Erro durante a inicialização do MessageController:', error)
+      throw error
+    }
+  }
   async incomingFromSunshine(settings, protocol, message) {
     try {
       const infos = await this.companiesModel.getByID(settings.company_id)
-
       if (message.content.type !== 'text' && message.content.type !== 'location')
         message.content.text = JSON.stringify([
           { url: message.content.mediaUrl, type: message.content.mediaType, name: message.content.altText }
@@ -60,36 +85,106 @@ export default class MessageController {
           )
         )
       }
+      console.log(`Mensagem processada com sucesso para o protocolo: ${protocol[0].id}`)
       return true
     } catch (err) {
-      console.log('🚀 ~ file: MessagesController.js ~ line 69 ~ MessageController ~ incomingFromBlip ~ err', err)
+      console.error('Erro ao processar mensagem do Sunshine:', err)
       return false
     }
+
   }
 
   async incomingFromCore() {
+    const queueName = 'mssunshine_input'
+    console.log(`Iniciando configuração do consumidor para a fila ${queueName}`)
     try {
-      const queueName = 'mssunshine_input'
-      global.amqpConn.assertQueue(queueName, { durable: true })
+      if (!global.amqpConn) {
+        console.error('global.amqpConn não está definido em incomingFromCore')
+        throw new Error('Conexão RabbitMQ não disponível')
+      }
+      if (this.consumerConfigured) {
+        console.log('Consumidor já configurado. Ignorando chamada adicional.')
+        return
+      }
+
+      console.log('Afirmando a fila...')
+      await new Promise((resolve, reject) => {
+        global.amqpConn.assertQueue(queueName, { durable: true }, (err) => {
+          if (err) {
+            console.error('Erro ao afirmar a fila:', err)
+            reject(err)
+          } else {
+            console.log('Fila afirmada com sucesso')
+            resolve()
+          }
+        })
+      })
+
       global.amqpConn.prefetch(1)
-      global.amqpConn.consume(
-        queueName,
-        (msg) => {
-          this.send(JSON.parse(msg.content.toString()))
-        },
-        { noAck: true }
-      )
+      console.log('Prefetch configurado para 1')
+
+      console.log(`Configurando consumidor para a fila ${queueName}`)
+
+      await new Promise((resolve, reject) => {
+        global.amqpConn.consume(
+          queueName,
+          async (msg) => {
+            if (msg !== null) {
+              console.log(`Recebida mensagem: ${msg.content.toString()}`)
+              try {
+                const content = JSON.parse(msg.content.toString())
+                await this.processMessage(content)
+                global.amqpConn.ack(msg)
+                console.log('Mensagem processada e confirmada')
+              } catch (error) {
+                console.error('Erro ao processar mensagem:', error)
+                if (this.isRecoverableError(error)) {
+                  console.log('Erro recuperável, recolocando mensagem na fila')
+                  global.amqpConn.nack(msg, false, true)
+                } else {
+                  console.log('Erro não recuperável, descartando mensagem')
+                  global.amqpConn.nack(msg, false, false)
+                }
+              }
+            }
+          },
+          { noAck: false },
+          (err, ok) => {
+            if (err) {
+              console.error('Erro ao configurar consumidor:', err)
+              reject(err)
+            } else {
+              this.consumerTag = ok.consumerTag
+              this.consumerConfigured = true
+              console.log(`Consumidor configurado com sucesso. Tag: ${this.consumerTag}`)
+              resolve()
+            }
+          }
+        )
+      })
+
+      console.log('Consumidor configurado com sucesso')
+      console.log('Iniciando monitoramento de consumidores...')
+      this.monitorConsumers(queueName)
     } catch (err) {
-      return err
+      console.error('Erro ao configurar consumo de mensagens:', err)
+      throw err
     }
+
   }
+
 
   async send(msg) {
     try {
       const company = await this.companiesModel.getByCompanyID(msg.token)
-      if (company.length < 1 || company.code === '22P02') return { error: 'Company inválida' }
-
-      const infos = await Promise.all([this.settingsModel.getByCompanyID(company[0].id), this.protocolModel.getByID(msg.protocol_id)])
+      if (company.length < 1 || company.code === '22P02') {
+        console.error(`Company inválida para o token: ${msg.token}`)
+        return { error: 'Company inválida' }
+      }
+      const [settings, protocol] = await Promise.all([
+        this.settingsModel.getByCompanyID(company[0].id),
+        this.protocolModel.getByID(msg.protocol_id)
+      ])
 
       let obj = {}
 
@@ -112,21 +207,26 @@ export default class MessageController {
         }
       }
 
-      const result = await this.sunshineService.sendMessage(infos[0][0], infos[1][0].conversation_id, obj)
-      if (result.status !== 201) return { error: 'Não foi possível enviar mensagem.' }
+      console.log(`Enviando mensagem para Sunshine: ${JSON.stringify(obj)}`)
+      const result = await this.sunshineService.sendMessage(settings[0], protocol[0].conversation_id, obj)
+      if (result.status !== 201) {
+        console.error(`Erro ao enviar mensagem para Sunshine. Status: ${result.status}`)
+        return { error: 'Não foi possível enviar mensagem.' }
+      }
 
-      this._saveMessage(infos[1][0].id, result.data.messages[0], 'operator')
+      await this._saveMessage(protocol[0].id, result.data.messages[0], 'operator')
 
+      console.log(`Mensagem enviada com sucesso para o protocolo: ${protocol[0].id}`)
       return { message: 'Mensagem enviada com sucesso!' }
     } catch (err) {
-      console.log('🚀 ~ file: MessagesController.js ~ line 128 ~ MessageController ~ send ~ err', err)
+      console.error('Erro ao enviar mensagem:', err)
       return err
     }
-  }
 
+  }
   async _saveMessage(protocol, message, source = false) {
     try {
-      return await this.messageModel.create({
+      const savedMessage = await this.messageModel.create({
         protocol_id: protocol,
         message_id: message.id,
         content:
@@ -135,41 +235,110 @@ export default class MessageController {
             : JSON.stringify([{ url: message.content.mediaUrl, type: message.content.mediaType, name: message.content.altText }]),
         type: message.content.type,
         source: !source ? message.source.type : source
-        // received: moment(message.received).format()
       })
+      console.log(`Mensagem salva com sucesso. ID: ${savedMessage[0].id}`)
+      return savedMessage
     } catch (err) {
-      console.log('🚀 ~ file: MessagesController.js ~ line 145 ~ MessageController ~ _saveMessage ~ err', err)
-      return err
+      console.error('Erro ao salvar mensagem:', err)
+      throw err
+    }
+  }
+  async _setContentType(type) {
+    const contentTypes = {
+      jpg: 'image/jpg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      mp4: 'video/mp4',
+      mpeg: 'audio/mpeg',
+      ogg: 'audio/ogg',
+      plain: 'text/plain',
+      html: 'text/html'
+    }
+    return contentTypes[type] || 'file/'
+  }
+
+  // ? RabbitMQ Functions
+
+  monitorConsumers(queueName) {
+    console.log(`Iniciando monitoramento de consumidores para a fila ${queueName}`)
+    if (this.monitorInterval) {
+      console.log('Monitoramento já está ativo. Ignorando chamada adicional.')
+      return
+    }
+    this.monitorInterval = setInterval(() => {
+      console.log('Executando verificação de consumidores...')
+      try {
+        if (!global.amqpConn) {
+          console.log('Conexão RabbitMQ não disponível. Tentando reconectar...')
+          this.reconnectRabbitMQ()
+          return
+        }
+
+        global.amqpConn.checkQueue(queueName, (err, ok) => {
+          if (err) {
+            console.error('Erro ao verificar a fila:', err)
+            this.reconnectRabbitMQ()
+            return
+          }
+
+          const consumerCount = ok.consumerCount
+          console.log(`Número atual de consumidores para a fila ${queueName}: ${consumerCount}`)
+
+          if (consumerCount === 0) {
+            console.warn(`Nenhum consumidor ativo para a fila ${queueName}. Reconectando...`)
+            this.consumerConfigured = false
+            this.reconnectRabbitMQ()
+          }
+        })
+      } catch (error) {
+        console.error('Erro ao verificar consumidores:', error)
+        this.reconnectRabbitMQ()
+      }
+    }, 60000) // Verificar a cada 60 segundos
+    console.log(`Monitoramento de consumidores iniciado para a fila ${queueName}`)
+
+  }
+  cancelExtraConsumers(queueName, count) {
+    if (!this.consumerTag) {
+      console.error('Tag do consumidor não disponível. Não é possível cancelar consumidores extras.');
+      return;
+    }
+    for (let i = 1; i < count; i++) {
+      global.amqpConn.cancel(this.consumerTag, (err) => {
+        if (err) {
+          console.error(`Erro ao cancelar consumidor extra: ${err}`);
+        } else {
+          console.log(`Consumidor extra cancelado com sucesso.`);
+        }
+      });
     }
   }
 
-  async _setContentType(type) {
-    switch (type) {
-      case 'jpg':
-        return 'image/jpg'
-
-      case 'jpeg':
-        return 'image/jpeg'
-
-      case 'png':
-        return 'image/png'
-
-      case 'mp4':
-        return 'video/mp4'
-
-      case 'mpeg':
-        return 'audio/mpeg'
-
-      case 'ogg':
-        return 'audio/ogg'
-
-      case 'plain':
-        return 'text/plain'
-
-      case 'html':
-        return 'text/html'
-      default:
-        return 'file/'
+  stopAllMonitoring() {
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = null;
     }
+    if (this.connectionCheckInterval) {
+      clearInterval(this.connectionCheckInterval);
+      this.connectionCheckInterval = null;
+    }
+    console.log('Todos os monitoramentos foram interrompidos');
+  }
+  stopMonitoring() {
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval)
+      this.monitorInterval = null
+      console.log('Monitoramento de consumidores interrompido')
+    }
+  }
+  async processMessage(msg) {
+    console.log(`Processando mensagem: ${JSON.stringify(msg)}`)
+    await this.send(msg)
+  }
+  isRecoverableError(error) {
+    return !error.fatal
   }
 }
+
+
