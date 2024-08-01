@@ -39,6 +39,8 @@ jest.mock('../config/rabbitMQ.js', () => ({
   closeConnection: jest.fn().mockResolvedValue(),
 }));
 
+const rabbitMQMock = jest.requireMock('../config/rabbitMQ.js');
+
 describe('MessageController', () => {
   let messageController;
   let mockDatabase;
@@ -61,7 +63,8 @@ describe('MessageController', () => {
         if (callback) callback(null, { consumerCount: 1 });
       }),
       ack: jest.fn(),
-      nack: jest.fn()
+      nack: jest.fn(),
+      cancel: jest.fn()
     };
 
     if (messageController.msCompanyService && messageController.msCompanyService.getByID) {
@@ -71,6 +74,7 @@ describe('MessageController', () => {
 
   afterEach(() => {
     messageController.stopMonitoring();
+    jest.clearAllMocks();
   });
 
   test('should initialize correctly', () => {
@@ -85,6 +89,28 @@ describe('MessageController', () => {
     expect(messageController.protocolModel).toBeDefined();
     expect(messageController.settingsModel).toBeDefined();
     expect(messageController.companiesModel).toBeDefined();
+  });
+
+  describe('initialize', () => {
+    test('should initialize successfully', async () => {
+      const initializeSpy = jest.spyOn(messageController, 'initialize');
+      const setupRetryQueueSpy = jest.spyOn(messageController, 'setupRetryQueue').mockResolvedValue();
+      const incomingFromCoreSpy = jest.spyOn(messageController, 'incomingFromCore').mockResolvedValue();
+
+      await messageController.initialize();
+
+      expect(initializeSpy).toHaveBeenCalled();
+      expect(setupRetryQueueSpy).toHaveBeenCalled();
+      expect(incomingFromCoreSpy).toHaveBeenCalled();
+      expect(messageController.connectionCheckInterval).toBeDefined();
+    });
+
+    test('should handle initialization error', async () => {
+      jest.spyOn(global, 'setInterval').mockImplementation(() => {});
+      jest.spyOn(messageController, 'setupRetryQueue').mockRejectedValue(new Error('Setup error'));
+
+      await expect(messageController.initialize()).rejects.toThrow('Setup error');
+    });
   });
 
   describe('incomingFromSunshine', () => {
@@ -168,6 +194,7 @@ describe('MessageController', () => {
       expect(result).toEqual({ error: 'Company inválida' });
     });
   });
+
   describe('setupRetryQueue', () => {
     test('should set up retry queue correctly', async () => {
       await messageController.setupRetryQueue();
@@ -194,48 +221,227 @@ describe('MessageController', () => {
 
       expect(messageController.processMessage).toHaveBeenCalledWith(mockContent);
       expect(global.amqpConn.ack).toHaveBeenCalledWith(mockMsg);
-      expect(messageController.retryCount.get('testMsgId')).toBeUndefined();
     });
 
     test('should retry message processing up to 3 times', async () => {
       const mockContent = { id: 'testId', message: 'Test message' };
-      const mockMsg = { properties: { messageId: 'testMsgId' }, content: Buffer.from(JSON.stringify(mockContent)) };
-
+      const mockMsg = { 
+        properties: { 
+          messageId: 'testMsgId',
+          headers: { 'x-retry-count': 0 }
+        }, 
+        content: Buffer.from(JSON.stringify(mockContent)) 
+      };
+    
       messageController.processMessage = jest.fn().mockRejectedValue(new Error('Test error'));
-
+    
       await messageController.processMessageWithRetry(mockContent, mockMsg);
-      await messageController.processMessageWithRetry(mockContent, mockMsg);
-      await messageController.processMessageWithRetry(mockContent, mockMsg);
-
+      await messageController.processMessageWithRetry(mockContent, { ...mockMsg, properties: { ...mockMsg.properties, headers: { 'x-retry-count': 1 } } });
+      await messageController.processMessageWithRetry(mockContent, { ...mockMsg, properties: { ...mockMsg.properties, headers: { 'x-retry-count': 2 } } });
+    
       expect(messageController.processMessage).toHaveBeenCalledTimes(3);
-      expect(global.amqpConn.sendToQueue).toHaveBeenCalledTimes(2);
-      expect(global.amqpConn.nack).toHaveBeenCalledTimes(1);
-      expect(messageController.retryCount.get('testMsgId')).toBeUndefined();
+      expect(global.amqpConn.sendToQueue).toHaveBeenCalledTimes(3);
     });
   });
 
   describe('handleMessageError', () => {
     test('should handle recoverable error', () => {
       const mockError = new Error('Recoverable error');
-      const mockMsg = { content: Buffer.from('Test message') };
+      const mockMsg = { 
+        properties: { messageId: 'testMsgId', headers: { 'x-retry-count': 0 } },
+        content: Buffer.from('Test message') 
+      };
 
       messageController.isRecoverableError = jest.fn().mockReturnValue(true);
 
       messageController.handleMessageError(mockError, mockMsg);
 
-      expect(global.amqpConn.sendToQueue).toHaveBeenCalledWith('mssunshine_input_retry', mockMsg.content);
+      expect(global.amqpConn.sendToQueue).toHaveBeenCalledWith('mssunshine_input_retry', mockMsg.content, expect.any(Object));
       expect(global.amqpConn.ack).toHaveBeenCalledWith(mockMsg);
     });
 
     test('should handle non-recoverable error', () => {
       const mockError = new Error('Non-recoverable error');
-      const mockMsg = { content: Buffer.from('Test message') };
-
+      const mockMsg = { 
+        properties: { messageId: 'testMsgId', headers: {} },
+        content: Buffer.from('Test message') 
+      };
+    
       messageController.isRecoverableError = jest.fn().mockReturnValue(false);
-
+    
       messageController.handleMessageError(mockError, mockMsg);
-
+    
       expect(global.amqpConn.nack).toHaveBeenCalledWith(mockMsg, false, false);
+    });
+  });
+
+  describe('_saveMessage', () => {
+    test('should save text message correctly', async () => {
+      const mockProtocol = 'protocolId';
+      const mockMessage = {
+        id: 'messageId',
+        content: { type: 'text', text: 'Hello' },
+        source: { type: 'user' }
+      };
+
+      messageController.messageModel.create = jest.fn().mockResolvedValue([{ id: 'savedMessageId' }]);
+
+      const result = await messageController._saveMessage(mockProtocol, mockMessage);
+
+      expect(messageController.messageModel.create).toHaveBeenCalledWith({
+        protocol_id: mockProtocol,
+        message_id: mockMessage.id,
+        content: 'Hello',
+        type: 'text',
+        source: 'user'
+      });
+      expect(result).toEqual([{ id: 'savedMessageId' }]);
+    });
+
+    test('should save non-text message correctly', async () => {
+      const mockProtocol = 'protocolId';
+      const mockMessage = {
+        id: 'messageId',
+        content: { type: 'image', mediaUrl: 'http://example.com/image.jpg', mediaType: 'image/jpeg', altText: 'An image' },
+        source: { type: 'user' }
+      };
+
+      messageController.messageModel.create = jest.fn().mockResolvedValue([{ id: 'savedMessageId' }]);
+
+      const result = await messageController._saveMessage(mockProtocol, mockMessage);
+
+      expect(messageController.messageModel.create).toHaveBeenCalledWith({
+        protocol_id: mockProtocol,
+        message_id: mockMessage.id,
+        content: JSON.stringify([{ url: 'http://example.com/image.jpg', type: 'image/jpeg', name: 'An image' }]),
+        type: 'image',
+        source: 'user'
+      });
+      expect(result).toEqual([{ id: 'savedMessageId' }]);
+    });
+  });
+
+  describe('monitorConsumers', () => {
+    test('should start monitoring consumers', () => {
+      jest.spyOn(global, 'setInterval').mockImplementation(() => 123);
+
+      messageController.monitorConsumers('testQueue');
+
+      expect(messageController.monitorInterval).toBeDefined();
+      expect(global.setInterval).toHaveBeenCalled();
+    });
+
+    test('should not start monitoring if already active', () => {
+      messageController.monitorInterval = 123;
+      jest.spyOn(global, 'setInterval').mockImplementation(() => {});
+
+      messageController.monitorConsumers('testQueue');
+
+      expect(global.setInterval).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stopMonitoring', () => {
+    test('should stop all monitoring', () => {
+      const mockMonitorInterval = 123;
+      const mockConnectionCheckInterval = 456;
+      messageController.monitorInterval = mockMonitorInterval;
+      messageController.connectionCheckInterval = mockConnectionCheckInterval;
+      jest.spyOn(global, 'clearInterval');
+    
+      messageController.stopAllMonitoring();
+    
+      expect(global.clearInterval).toHaveBeenCalledTimes(2);
+      expect(global.clearInterval).toHaveBeenCalledWith(mockMonitorInterval);
+      expect(global.clearInterval).toHaveBeenCalledWith(mockConnectionCheckInterval);
+      expect(messageController.monitorInterval).toBeNull();
+      expect(messageController.connectionCheckInterval).toBeNull();
+    });
+  });
+
+  describe('checkRabbitMQConnection', () => {
+    test('should check connection successfully', () => {
+      messageController.checkRabbitMQConnection();
+
+      expect(global.amqpConn.checkQueue).toHaveBeenCalledWith('mssunshine_input', expect.any(Function));
+    });
+
+    test('should attempt reconnection on error', () => {
+      global.amqpConn.checkQueue = jest.fn().mockImplementation((queueName, callback) => {
+        callback(new Error('Connection error'));
+      });
+
+      const reconnectSpy = jest.spyOn(messageController, 'reconnectRabbitMQ').mockImplementation(() => {});
+
+      messageController.checkRabbitMQConnection();
+
+      expect(reconnectSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('reconnectRabbitMQ', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+  
+    test('should reconnect successfully', async () => {
+      rabbitMQMock.closeConnection.mockResolvedValue();
+      rabbitMQMock.default.mockResolvedValue();
+      global.amqpConn = {}; // Mock the global connection
+  
+      const incomingFromCoreSpy = jest.spyOn(messageController, 'incomingFromCore').mockResolvedValue();
+  
+      await messageController.reconnectRabbitMQ();
+  
+      expect(incomingFromCoreSpy).toHaveBeenCalled();
+      expect(messageController.consumerConfigured).toBe(false);
+    });
+  
+    test('should handle reconnection failure', async () => {
+      rabbitMQMock.closeConnection.mockRejectedValue(new Error('Close error'));
+      jest.spyOn(global, 'setTimeout').mockImplementation((cb) => cb());
+  
+      const reconnectSpy = jest.spyOn(messageController, 'reconnectRabbitMQ');
+  
+      await messageController.reconnectRabbitMQ();
+  
+      expect(reconnectSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe('cancelExtraConsumers', () => {
+    test('should cancel extra consumers', () => {
+      messageController.consumerTag = 'testTag';
+
+      messageController.cancelExtraConsumers('testQueue', 3);
+
+      expect(global.amqpConn.cancel).toHaveBeenCalledTimes(2);
+      expect(global.amqpConn.cancel).toHaveBeenCalledWith('testTag', expect.any(Function));
+    });
+
+    test('should not cancel consumers if consumerTag is not set', () => {
+      messageController.consumerTag = null;
+
+      messageController.cancelExtraConsumers('testQueue', 3);
+
+      expect(global.amqpConn.cancel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stopAllMonitoring', () => {
+    test('should stop all monitoring', () => {
+      const mockMonitorInterval = 123;
+      const mockConnectionCheckInterval = 456;
+      messageController.monitorInterval = mockMonitorInterval;
+      messageController.connectionCheckInterval = mockConnectionCheckInterval;
+      jest.spyOn(global, 'clearInterval');
+    
+      messageController.stopAllMonitoring();
+    
+      expect(global.clearInterval).toHaveBeenCalledTimes(2);
+      expect(global.clearInterval).toHaveBeenCalledWith(mockMonitorInterval);
+      expect(global.clearInterval).toHaveBeenCalledWith(mockConnectionCheckInterval);
+      expect(messageController.monitorInterval).toBeNull();
+      expect(messageController.connectionCheckInterval).toBeNull();
     });
   });
 
