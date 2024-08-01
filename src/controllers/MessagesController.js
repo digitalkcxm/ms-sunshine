@@ -9,6 +9,7 @@ import CompaniesModel from '../models/CompaniesModel.js'
 import StorageService from '../services/StorageService.js'
 import MSCompanyService from '../services/MSCompanyService.js'
 import queue, { closeConnection } from '../config/rabbitMQ.js';
+
 export default class MessageController {
   static instance = null;
   constructor(database) {
@@ -26,17 +27,21 @@ export default class MessageController {
     this.connectionCheckInterval = null
     this.consumerConfigured = false
     this.consumerTag = null
+    this.retryCount = new Map();
   }
+
   async initialize() {
     console.log('Iniciando inicialização do MessageController...')
     try {
       console.log('Aguardando conexão com RabbitMQ...')
-      await queue() // Espera a conexão com o RabbitMQ ser estabelecida
+      await queue() 
       if (!global.amqpConn) {
         throw new Error('global.amqpConn não foi definido após a conexão')
       }
 
       console.log('Conexão com RabbitMQ estabelecida com sucesso')
+
+      await this.setupRetryQueue();
 
       this.connectionCheckInterval = setInterval(() => this.checkRabbitMQConnection(), 600)
       console.log('Intervalo de verificação de conexão configurado')
@@ -91,7 +96,6 @@ export default class MessageController {
       console.error('Erro ao processar mensagem do Sunshine:', err)
       return false
     }
-
   }
 
   async incomingFromCore() {
@@ -133,18 +137,10 @@ export default class MessageController {
               console.log(`Recebida mensagem: ${msg.content.toString()}`)
               try {
                 const content = JSON.parse(msg.content.toString())
-                await this.processMessage(content)
-                global.amqpConn.ack(msg)
-                console.log('Mensagem processada e confirmada')
+                await this.processMessageWithRetry(content, msg)
               } catch (error) {
                 console.error('Erro ao processar mensagem:', error)
-                if (this.isRecoverableError(error)) {
-                  console.log('Erro recuperável, recolocando mensagem na fila')
-                  global.amqpConn.nack(msg, false, true)
-                } else {
-                  console.log('Erro não recuperável, descartando mensagem')
-                  global.amqpConn.nack(msg, false, false)
-                }
+                this.handleMessageError(error, msg)
               }
             }
           },
@@ -170,8 +166,9 @@ export default class MessageController {
       console.error('Erro ao configurar consumo de mensagens:', err)
       throw err
     }
-
   }
+
+
 
 
   async send(msg) {
@@ -222,8 +219,8 @@ export default class MessageController {
       console.error('Erro ao enviar mensagem:', err)
       return err
     }
-
   }
+
   async _saveMessage(protocol, message, source = false) {
     try {
       const savedMessage = await this.messageModel.create({
@@ -243,6 +240,7 @@ export default class MessageController {
       throw err
     }
   }
+
   async _setContentType(type) {
     const contentTypes = {
       jpg: 'image/jpg',
@@ -296,8 +294,8 @@ export default class MessageController {
       }
     }, 60000) // Verificar a cada 60 segundos
     console.log(`Monitoramento de consumidores iniciado para a fila ${queueName}`)
-
   }
+
   cancelExtraConsumers(queueName, count) {
     if (!this.consumerTag) {
       console.error('Tag do consumidor não disponível. Não é possível cancelar consumidores extras.');
@@ -325,6 +323,7 @@ export default class MessageController {
     }
     console.log('Todos os monitoramentos foram interrompidos');
   }
+
   stopMonitoring() {
     if (this.monitorInterval) {
       clearInterval(this.monitorInterval)
@@ -332,13 +331,103 @@ export default class MessageController {
       console.log('Monitoramento de consumidores interrompido')
     }
   }
+
   async processMessage(msg) {
     console.log(`Processando mensagem: ${JSON.stringify(msg)}`)
     await this.send(msg)
   }
+
   isRecoverableError(error) {
     return !error.fatal
   }
+  
+  async setupRetryQueue() {
+    const retryQueueName = 'mssunshine_input_retry';
+    const mainQueueName = 'mssunshine_input';
+
+    await global.amqpConn.assertQueue(retryQueueName, {
+      durable: true,
+      deadLetterExchange: '',
+      deadLetterRoutingKey: mainQueueName,
+      messageTtl: 10000 // 10 seg
+    });
+
+    console.log(`Fila de retry ${retryQueueName} configurada com sucesso`);
+  }
+  
+  async processMessageWithRetry(content, msg) {
+    const messageId = msg.properties.messageId || 'unknown';
+    let retryCount = this.retryCount.get(messageId) || 0;
+
+    try {
+      await this.processMessage(content)
+      global.amqpConn.ack(msg)
+      console.log('Mensagem processada e confirmada')
+      this.retryCount.delete(messageId);
+    } catch (error) {
+      console.error('Erro ao processar mensagem:', error)
+      retryCount++;
+      this.retryCount.set(messageId, retryCount);
+
+      if (retryCount < 3) {
+        console.log(`Tentativa ${retryCount} de 3. Enviando para fila de retry.`)
+        global.amqpConn.sendToQueue('mssunshine_input_retry', msg.content, {
+          headers: { 'x-retry-count': retryCount }
+        })
+        global.amqpConn.ack(msg)
+      } else {
+        console.log('Dead Queue: Máximo de tentativas atingido')
+        global.amqpConn.nack(msg, false, false)
+        this.retryCount.delete(messageId);
+      }
+    }
+  }
+
+  handleMessageError(error, msg) {
+    if (this.isRecoverableError(error)) {
+      console.log('Erro recuperável, recolocando mensagem na fila de retry')
+      global.amqpConn.sendToQueue('mssunshine_input_retry', msg.content)
+      global.amqpConn.ack(msg)
+    } else {
+      console.log('Erro não recuperável, descartando mensagem')
+      global.amqpConn.nack(msg, false, false)
+    }
+  }
+
+  async reconnectRabbitMQ() {
+    console.log('Tentando reconectar ao RabbitMQ...')
+    try {
+      await closeConnection();
+      await queue()
+      if (!global.amqpConn) {
+        throw new Error('Falha ao reconectar: global.amqpConn não foi definido')
+      }
+      console.log('Reconexão bem-sucedida')
+      this.consumerConfigured = false;
+      await this.incomingFromCore()
+    } catch (error) {
+      console.error('Erro ao reconectar:', error)
+      setTimeout(() => this.reconnectRabbitMQ(), 5000)
+    }
+  }
+
+  checkRabbitMQConnection() {
+    if (!global.amqpConn) {
+      console.log('Conexão RabbitMQ não disponível. Tentando reconectar...')
+      this.reconnectRabbitMQ()
+      return
+    }
+    
+    global.amqpConn.checkQueue('mssunshine_input', (err) => {
+      if (err) {
+        console.error('Erro na conexão com RabbitMQ:', err)
+        this.reconnectRabbitMQ()
+      } else {
+        console.log('Conexão com RabbitMQ está ativa')
+      }
+    })
+  }
 }
+
 
 

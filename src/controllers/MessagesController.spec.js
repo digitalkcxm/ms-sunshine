@@ -50,15 +50,18 @@ describe('MessageController', () => {
     global.amqpConn = {
       sendToQueue: jest.fn(),
       assertQueue: jest.fn().mockImplementation((queueName, options, callback) => {
-        callback(null, {});
+        if (callback) callback(null, {});
+        return Promise.resolve({});
       }),
       prefetch: jest.fn(),
       consume: jest.fn().mockImplementation((queueName, callback, options, consumeCallback) => {
-        consumeCallback(null, { consumerTag: 'mockTag' });
+        if (consumeCallback) consumeCallback(null, { consumerTag: 'mockTag' });
       }),
       checkQueue: jest.fn().mockImplementation((queueName, callback) => {
-        callback(null, { consumerCount: 1 });
-      })
+        if (callback) callback(null, { consumerCount: 1 });
+      }),
+      ack: jest.fn(),
+      nack: jest.fn()
     };
 
     if (messageController.msCompanyService && messageController.msCompanyService.getByID) {
@@ -163,6 +166,76 @@ describe('MessageController', () => {
       const result = await messageController.send(mockMsg);
 
       expect(result).toEqual({ error: 'Company inválida' });
+    });
+  });
+  describe('setupRetryQueue', () => {
+    test('should set up retry queue correctly', async () => {
+      await messageController.setupRetryQueue();
+      expect(global.amqpConn.assertQueue).toHaveBeenCalledWith(
+        'mssunshine_input_retry',
+        expect.objectContaining({
+          durable: true,
+          deadLetterExchange: '',
+          deadLetterRoutingKey: 'mssunshine_input',
+          messageTtl: 10000
+        })
+      );
+    });
+  });
+
+  describe('processMessageWithRetry', () => {
+    test('should process message successfully on first attempt', async () => {
+      const mockContent = { id: 'testId', message: 'Test message' };
+      const mockMsg = { properties: { messageId: 'testMsgId' }, content: Buffer.from(JSON.stringify(mockContent)) };
+
+      messageController.processMessage = jest.fn().mockResolvedValue();
+
+      await messageController.processMessageWithRetry(mockContent, mockMsg);
+
+      expect(messageController.processMessage).toHaveBeenCalledWith(mockContent);
+      expect(global.amqpConn.ack).toHaveBeenCalledWith(mockMsg);
+      expect(messageController.retryCount.get('testMsgId')).toBeUndefined();
+    });
+
+    test('should retry message processing up to 3 times', async () => {
+      const mockContent = { id: 'testId', message: 'Test message' };
+      const mockMsg = { properties: { messageId: 'testMsgId' }, content: Buffer.from(JSON.stringify(mockContent)) };
+
+      messageController.processMessage = jest.fn().mockRejectedValue(new Error('Test error'));
+
+      await messageController.processMessageWithRetry(mockContent, mockMsg);
+      await messageController.processMessageWithRetry(mockContent, mockMsg);
+      await messageController.processMessageWithRetry(mockContent, mockMsg);
+
+      expect(messageController.processMessage).toHaveBeenCalledTimes(3);
+      expect(global.amqpConn.sendToQueue).toHaveBeenCalledTimes(2);
+      expect(global.amqpConn.nack).toHaveBeenCalledTimes(1);
+      expect(messageController.retryCount.get('testMsgId')).toBeUndefined();
+    });
+  });
+
+  describe('handleMessageError', () => {
+    test('should handle recoverable error', () => {
+      const mockError = new Error('Recoverable error');
+      const mockMsg = { content: Buffer.from('Test message') };
+
+      messageController.isRecoverableError = jest.fn().mockReturnValue(true);
+
+      messageController.handleMessageError(mockError, mockMsg);
+
+      expect(global.amqpConn.sendToQueue).toHaveBeenCalledWith('mssunshine_input_retry', mockMsg.content);
+      expect(global.amqpConn.ack).toHaveBeenCalledWith(mockMsg);
+    });
+
+    test('should handle non-recoverable error', () => {
+      const mockError = new Error('Non-recoverable error');
+      const mockMsg = { content: Buffer.from('Test message') };
+
+      messageController.isRecoverableError = jest.fn().mockReturnValue(false);
+
+      messageController.handleMessageError(mockError, mockMsg);
+
+      expect(global.amqpConn.nack).toHaveBeenCalledWith(mockMsg, false, false);
     });
   });
 
