@@ -27,7 +27,6 @@ export default class MessageController {
     this.connectionCheckInterval = null
     this.consumerConfigured = false
     this.consumerTag = null
-    this.retryCount = new Map();
   }
 
   async initialize() {
@@ -172,7 +171,6 @@ export default class MessageController {
 
 
   async send(msg) {
-    try {
       const company = await this.companiesModel.getByCompanyID(msg.token)
       if (company.length < 1 || company.code === '22P02') {
         console.error(`Company inválida para o token: ${msg.token}`)
@@ -215,10 +213,7 @@ export default class MessageController {
 
       console.log(`Mensagem enviada com sucesso para o protocolo: ${protocol[0].id}`)
       return { message: 'Mensagem enviada com sucesso!' }
-    } catch (err) {
-      console.error('Erro ao enviar mensagem:', err)
-      return err
-    }
+
   }
 
   async _saveMessage(protocol, message, source = false) {
@@ -292,7 +287,7 @@ export default class MessageController {
         console.error('Erro ao verificar consumidores:', error)
         this.reconnectRabbitMQ()
       }
-    }, 60000) // Verificar a cada 60 segundos
+    }, 60000) // 60 seconds
     console.log(`Monitoramento de consumidores iniciado para a fila ${queueName}`)
   }
 
@@ -357,39 +352,48 @@ export default class MessageController {
   
   async processMessageWithRetry(content, msg) {
     const messageId = msg.properties.messageId || 'unknown';
-    let retryCount = this.retryCount.get(messageId) || 0;
+    let retryCount = (msg.properties.headers && msg.properties.headers['x-retry-count']) || 0;
 
     try {
       await this.processMessage(content)
       global.amqpConn.ack(msg)
       console.log('Mensagem processada e confirmada')
-      this.retryCount.delete(messageId);
     } catch (error) {
       console.error('Erro ao processar mensagem:', error)
+      console.log(`Tentativa ${retryCount} de 3. Enviando para fila de retry.`)
       retryCount++;
-      this.retryCount.set(messageId, retryCount);
 
-      if (retryCount < 3) {
-        console.log(`Tentativa ${retryCount} de 3. Enviando para fila de retry.`)
+      if (retryCount <= 4) {
         global.amqpConn.sendToQueue('mssunshine_input_retry', msg.content, {
-          headers: { 'x-retry-count': retryCount }
+          headers: { 'x-retry-count': retryCount },
+          messageId: messageId
         })
         global.amqpConn.ack(msg)
       } else {
         console.log('Dead Queue: Máximo de tentativas atingido')
         global.amqpConn.nack(msg, false, false)
-        this.retryCount.delete(messageId);
       }
     }
   }
 
   handleMessageError(error, msg) {
-    if (this.isRecoverableError(error)) {
-      console.log('Erro recuperável, recolocando mensagem na fila de retry')
-      global.amqpConn.sendToQueue('mssunshine_input_retry', msg.content)
+    const messageId = msg.properties.messageId || 'unknown';
+    let retryCount = (msg.properties.headers && msg.properties.headers['x-retry-count']) || 0;
+    
+    console.log(`Erro recuperável, tentativa ${retryCount} de 3. Recolocando mensagem na fila de retry`)
+    retryCount++;
+    if (this.isRecoverableError(error) && retryCount <= 4) {
+      global.amqpConn.sendToQueue('mssunshine_input_retry', msg.content, {
+        headers: { 'x-retry-count': retryCount },
+        messageId: messageId
+      })
       global.amqpConn.ack(msg)
     } else {
-      console.log('Erro não recuperável, descartando mensagem')
+      if (retryCount >= 3) {
+        console.log('Máximo de tentativas atingido, movendo para dead-letter queue')
+      } else {
+        console.log('Erro não recuperável, descartando mensagem')
+      }
       global.amqpConn.nack(msg, false, false)
     }
   }
