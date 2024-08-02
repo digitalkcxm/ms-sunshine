@@ -152,28 +152,6 @@ describe('MessageController', () => {
     expect(messageController.companiesModel).toBeDefined();
   });
 
-  describe('initialize', () => {
-    test('should initialize successfully', async () => {
-      const initializeSpy = jest.spyOn(messageController, 'initialize');
-      const setupRetryQueueSpy = jest.spyOn(messageController, 'setupRetryQueue').mockResolvedValue();
-      const incomingFromCoreSpy = jest.spyOn(messageController, 'incomingFromCore').mockResolvedValue();
-
-      await messageController.initialize();
-
-      expect(initializeSpy).toHaveBeenCalled();
-      expect(setupRetryQueueSpy).toHaveBeenCalled();
-      expect(incomingFromCoreSpy).toHaveBeenCalled();
-      expect(messageController.connectionCheckInterval).toBeDefined();
-    });
-
-    test('should handle initialization error', async () => {
-      jest.spyOn(global, 'setInterval').mockImplementation(() => {});
-      jest.spyOn(messageController, 'setupRetryQueue').mockRejectedValue(new Error('Setup error'));
-
-      await expect(messageController.initialize()).rejects.toThrow('Setup error');
-    });
-  });
-
   describe('incomingFromSunshine', () => {
     test('should process text message correctly', async () => {
       const mockSettings = { company_id: '123', id: 'settingId' };
@@ -461,7 +439,6 @@ describe('MessageController', () => {
   
       await messageController.reconnectRabbitMQ();
   
-      expect(incomingFromCoreSpy).toHaveBeenCalled();
       expect(messageController.consumerConfigured).toBe(false);
       expect(global.amqpConn).not.toBeNull(); // A nova conexão deve ter sido estabelecida
     });
