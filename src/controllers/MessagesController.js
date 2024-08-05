@@ -27,6 +27,7 @@ export default class MessageController {
     this.connectionCheckInterval = null
     this.consumerConfigured = false
     this.consumerTag = null
+    this.isReconnecting = false;
   }
 
   async initialize() {
@@ -396,21 +397,31 @@ export default class MessageController {
   }
 
   async reconnectRabbitMQ() {
-    console.log('Tentando reconectar ao RabbitMQ...')
+    if (this.isReconnecting) {
+      console.log('Já existe uma tentativa de reconexão em andamento. Aguardando...');
+      return;
+    }
+
+    this.isReconnecting = true;
+    console.log('Tentando reconectar ao RabbitMQ...');
+
     try {
       await closeConnection();
-      await queue()
+      await queue();
       if (!global.amqpConn) {
-        throw new Error('Falha ao reconectar: global.amqpConn não foi definido')
+        throw new Error('Falha ao reconectar: global.amqpConn não foi definido');
       }
-      console.log('Reconexão bem-sucedida')
+      console.log('Reconexão bem-sucedida');
       this.consumerConfigured = false;
-      await this.incomingFromCore()
+      await this.incomingFromCore();
     } catch (error) {
-      console.error('Erro ao reconectar:', error)
-      setTimeout(() => this.reconnectRabbitMQ(), 5000)
+      console.error('Erro ao reconectar:', error);
+      setTimeout(() => this.reconnectRabbitMQ(), 5000);
+    } finally {
+      this.isReconnecting = false;
     }
   }
+
 
   checkRabbitMQConnection() {
     console.log('Checking connection...')
