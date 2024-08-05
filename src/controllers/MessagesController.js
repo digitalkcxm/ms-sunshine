@@ -408,7 +408,7 @@ export default class MessageController {
       await this.incomingFromCore()
     } catch (error) {
       console.error('Erro ao reconectar:', error)
-      setTimeout(() => this.reconnectRabbitMQ(), 10)
+      setTimeout(() => this.reconnectRabbitMQ(), 5000)
     }
   }
 
