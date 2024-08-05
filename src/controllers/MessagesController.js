@@ -42,7 +42,7 @@ export default class MessageController {
 
       await this.setupRetryQueue();
 
-      this.connectionCheckInterval = setInterval(() => this.checkRabbitMQConnection(), 600)
+      this.connectionCheckInterval = setInterval(() => this.checkRabbitMQConnection(), 10)
       console.log('Intervalo de verificação de conexão configurado')
 
       console.log('Chamando incomingFromCore...')
@@ -167,9 +167,6 @@ export default class MessageController {
     }
   }
 
-
-
-
   async send(msg) {
       const company = await this.companiesModel.getByCompanyID(msg.token)
       if (company.length < 1 || company.code === '22P02') {
@@ -287,7 +284,7 @@ export default class MessageController {
         console.error('Erro ao verificar consumidores:', error)
         this.reconnectRabbitMQ()
       }
-    }, 60000) // 60 seconds
+    }, 1000) // 60 seconds
     console.log(`Monitoramento de consumidores iniciado para a fila ${queueName}`)
   }
 
@@ -411,11 +408,12 @@ export default class MessageController {
       await this.incomingFromCore()
     } catch (error) {
       console.error('Erro ao reconectar:', error)
-      setTimeout(() => this.reconnectRabbitMQ(), 5000)
+      setTimeout(() => this.reconnectRabbitMQ(), 10)
     }
   }
 
   checkRabbitMQConnection() {
+    console.log('Checking connection...')
     if (!global.amqpConn) {
       console.log('Conexão RabbitMQ não disponível. Tentando reconectar...')
       this.reconnectRabbitMQ()
