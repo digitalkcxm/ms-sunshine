@@ -1,4 +1,3 @@
-import tracing from './elastic-apm.js'
 import http from 'http'
 import cors from './cors.js'
 import express from 'express'
@@ -17,11 +16,11 @@ app.use(bodyParser.json({ limit: '256mb', extended: true }))
 app.use(bodyParser.urlencoded({ extended: true, limit: '256mb' }))
 cors(app)
 
-routes(app, database, tracing)
+routes(app, database)
 queue()
 
 moment.tz.setDefault('America/Sao_Paulo')
 
 if (process.env.NODE_ENV !== 'testing') server.listen(process.env.PORT, () => console.log(`Server running in port ${process.env.PORT}`))
 
-export default { server, app, database, tracing}
+export default { server, app, database }
