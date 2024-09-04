@@ -257,7 +257,6 @@ export default class MessageController {
       return
     }
     this.monitorInterval = setInterval(() => {
-      console.log('Executando verificação de consumidores...')
       try {
         if (!global.amqpConn) {
           console.log('Conexão RabbitMQ não disponível. Tentando reconectar...')
@@ -273,7 +272,6 @@ export default class MessageController {
           }
 
           const consumerCount = ok.consumerCount
-          console.log(`Número atual de consumidores para a fila ${queueName}: ${consumerCount}`)
 
           if (consumerCount === 0) {
             console.warn(`Nenhum consumidor ativo para a fila ${queueName}. Reconectando...`)
@@ -424,7 +422,6 @@ export default class MessageController {
 
 
   checkRabbitMQConnection() {
-    console.log('Checking connection...')
     if (!global.amqpConn) {
       console.log('Conexão RabbitMQ não disponível. Tentando reconectar...')
       this.reconnectRabbitMQ()
@@ -435,8 +432,6 @@ export default class MessageController {
       if (err) {
         console.error('Erro na conexão com RabbitMQ:', err)
         this.reconnectRabbitMQ()
-      } else {
-        console.log('Conexão com RabbitMQ está ativa')
       }
     })
   }
